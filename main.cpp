@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
+#include "AnalogIn.h"
+#include "GattCharacteristic.h"
 #include "PinNames.h"
+#include <cstdio>
 #define __BLE_ENVIRONMENTAL_SERVICE_H__
  
 #include <events/mbed_events.h>
@@ -24,16 +27,20 @@
 #include "ble/services/HeartRateService.h"
 #include "ble/services/EnvironmentalService.h"
 #include "pretty_printer.h"
+#include <Dht11.h>
  
 const static char DEVICE_NAME[] = "Measurement Node";
  
 static events::EventQueue event_queue(/* event count */ 16 * EVENTS_EVENT_SIZE);
+Dht11 sensor(PC_5);
+AnalogIn input(PC_3);
  
 class MeasurementNode : ble::Gap::EventHandler {
 public:
     typedef int16_t  TemperatureType_t;
     typedef uint16_t HumidityType_t;
     typedef uint32_t PressureType_t;
+    typedef uint16_t ResistanceType_t;
 
     /**
      * @brief   EnvironmentalService constructor.
@@ -51,6 +58,7 @@ public:
         temperatureCharacteristic(GattCharacteristic::UUID_TEMPERATURE_CHAR, &temperature),
         humidityCharacteristic(GattCharacteristic::UUID_HUMIDITY_CHAR, &humidity),
         pressureCharacteristic(GattCharacteristic::UUID_PRESSURE_CHAR, &pressure),
+        resistanceCharacteristic(0x2B03, &resistance),
         _adv_data_builder(_adv_buffer) { }
 
 
@@ -59,14 +67,22 @@ public:
         _ble.gap().setEventHandler(this);
  
         _ble.init(this, &MeasurementNode::on_init_complete);
+
+        printf("cos");
+
+        
  
         _event_queue.call_every(500, this, &MeasurementNode::blink);
         // _event_queue.call_every(1000, this, &HeartrateDemo::update_sensor_value);
 
-        _event_queue.call_every(50000, this, &MeasurementNode::updateTest);
+        // _event_queue.call_every(10s, this, &MeasurementNode::updateValue);
+
+        _event_queue.call_every(2s, this, &MeasurementNode::updateTest);
+
+        // _event_queue.call_every(10s, this, &MeasurementNode::lightTest);
         
         updateTemperature(28.6);
-        updatePressure(1020);
+        // updatePressure(1020);
  
         _event_queue.dispatch_forever();
     }
@@ -101,7 +117,8 @@ private:
 
         GattCharacteristic *charTable[] = { &humidityCharacteristic,
                                             &pressureCharacteristic,
-                                            &temperatureCharacteristic };
+                                            &temperatureCharacteristic,
+                                            &resistanceCharacteristic };
 
         GattService environmentalService(GattService::UUID_ENVIRONMENTAL_SERVICE, charTable, sizeof(charTable) / sizeof(GattCharacteristic *));
 
@@ -160,10 +177,19 @@ private:
      * @brief   Update pressure characteristic.
      * @param   newPressureVal New pressure measurement.
      */
-    void updatePressure(PressureType_t newPressureVal)
+    void updatePressure(float newPressureVal)
     {
-        pressure = (PressureType_t) (newPressureVal * 10);
+        pressure = (PressureType_t) (newPressureVal);
         _ble.gattServer().write(pressureCharacteristic.getValueHandle(), (uint8_t *) &pressure, sizeof(PressureType_t));
+    }
+
+     void updateResistance(int newResistanceVal)
+    {
+        float voltage = newResistanceVal * (5.0/1023) * 1000;
+        float resistanceVal = 10000 * ( voltage / ( 5000.0 - voltage) );
+        int resistanceInt = static_cast<int>(resistanceVal);
+        resistance = (ResistanceType_t) (resistanceInt);
+        _ble.gattServer().write(resistanceCharacteristic.getValueHandle(), (uint8_t *) &resistance, sizeof(ResistanceType_t));
     }
 
     /**
@@ -172,18 +198,54 @@ private:
      */
     void updateTemperature(float newTemperatureVal)
     {
-        temperature = (TemperatureType_t) (newTemperatureVal * 100);
+        temperature = (TemperatureType_t) (newTemperatureVal*100);
         _ble.gattServer().write(temperatureCharacteristic.getValueHandle(), (uint8_t *) &temperature, sizeof(TemperatureType_t));
     }
+
+    // void updateLight(float newLightVal)
+    // {
+    //     light= (TemperatureType_t) (newTemperatureVal);
+    //     _ble.gattServer().write(temperatureCharacteristic.getValueHandle(), (uint8_t *) &temperature, sizeof(TemperatureType_t));
+    // }
  
     void blink(void) {
         _led1 = !_led1;
     }
 
-    void updateTest(void){
+    void updateValue(void){
+        int ret = sensor.read();
+        printf("Working?:%d", ret);
+        int hum = sensor.getHumidity();
+        printf("Hummildity:%d", hum);
+        printf("Temp:%d", sensor.getCelsius());
+        updateTemperature(sensor.getCelsius());
+        updatePressure(sensor.getHumidity());
+    }
+
+      void updateTest(void){
         test_Counter += 0.7;
         updateTemperature(test_Counter);
+        int light = input.read_u16();
+        printf("Light:%d", light);
+        updateResistance(light);
     }
+
+    void lightTest(void){
+
+        #define NUM_SAMPLES 1024
+        uint16_t samples[NUM_SAMPLES];
+
+        for (int i = 0; i < NUM_SAMPLES; i++) {
+            samples[i] = input.read_u16();
+            ThisThread::sleep_for(1);
+        }
+
+        printf("Results:\n");
+        for (int i = 0; i < NUM_SAMPLES; i++) {
+            printf("%d, 0x%04X\n", i, samples[i]);
+        }
+    }
+
  
 private:
     /* Event handler */
@@ -206,10 +268,13 @@ private:
     TemperatureType_t temperature;
     HumidityType_t    humidity;
     PressureType_t    pressure;
+    ResistanceType_t resistance;
+    
 
     ReadOnlyGattCharacteristic<TemperatureType_t> temperatureCharacteristic;
     ReadOnlyGattCharacteristic<HumidityType_t>    humidityCharacteristic;
     ReadOnlyGattCharacteristic<PressureType_t>    pressureCharacteristic;
+    ReadOnlyGattCharacteristic<ResistanceType_t> resistanceCharacteristic;
  
     bool _connected;
  
