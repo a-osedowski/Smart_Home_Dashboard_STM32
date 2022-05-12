@@ -27,12 +27,14 @@
 #include "ble/services/HeartRateService.h"
 #include "ble/services/EnvironmentalService.h"
 #include "pretty_printer.h"
-#include <Dht11.h>
+// #include <Dht11.h>
+#include <DHT.h>
  
 const static char DEVICE_NAME[] = "Measurement Node";
  
 static events::EventQueue event_queue(/* event count */ 16 * EVENTS_EVENT_SIZE);
-Dht11 sensor(PC_5);
+// DHT11 sensor(PC_2);
+DHT dht(PC_2, DHT::DHT11);
 AnalogIn input(PC_3);
  
 class MeasurementNode : ble::Gap::EventHandler {
@@ -57,8 +59,8 @@ public:
         // _temp_uuid(GattService::UUID_ENVIRONMENTAL_SERVICE),
         temperatureCharacteristic(GattCharacteristic::UUID_TEMPERATURE_CHAR, &temperature),
         humidityCharacteristic(GattCharacteristic::UUID_HUMIDITY_CHAR, &humidity),
-        pressureCharacteristic(GattCharacteristic::UUID_PRESSURE_CHAR, &pressure),
-        resistanceCharacteristic(0x2B03, &resistance),
+        // pressureCharacteristic(GattCharacteristic::UUID_PRESSURE_CHAR, &pressure),
+        resistanceCharacteristic(0x2a6d, &resistance),
         _adv_data_builder(_adv_buffer) { }
 
 
@@ -68,8 +70,10 @@ public:
  
         _ble.init(this, &MeasurementNode::on_init_complete);
 
-        printf("cos");
+        printf("Charactristic temp %d", GattCharacteristic::UUID_TEMPERATURE_CHAR);
+        test_Counter = 0;
 
+        // updateTemperature(2.8);
         
  
         _event_queue.call_every(500, this, &MeasurementNode::blink);
@@ -77,11 +81,10 @@ public:
 
         // _event_queue.call_every(10s, this, &MeasurementNode::updateValue);
 
-        _event_queue.call_every(2s, this, &MeasurementNode::updateTest);
+        _event_queue.call_every(15min, this, &MeasurementNode::updateTest);
 
         // _event_queue.call_every(10s, this, &MeasurementNode::lightTest);
         
-        updateTemperature(28.6);
         // updatePressure(1020);
  
         _event_queue.dispatch_forever();
@@ -116,7 +119,7 @@ private:
         }
 
         GattCharacteristic *charTable[] = { &humidityCharacteristic,
-                                            &pressureCharacteristic,
+                                            // &pressureCharacteristic,
                                             &temperatureCharacteristic,
                                             &resistanceCharacteristic };
 
@@ -177,11 +180,11 @@ private:
      * @brief   Update pressure characteristic.
      * @param   newPressureVal New pressure measurement.
      */
-    void updatePressure(float newPressureVal)
-    {
-        pressure = (PressureType_t) (newPressureVal);
-        _ble.gattServer().write(pressureCharacteristic.getValueHandle(), (uint8_t *) &pressure, sizeof(PressureType_t));
-    }
+    // void updatePressure(float newPressureVal)
+    // {
+    //     pressure = (PressureType_t) (newPressureVal);
+    //     _ble.gattServer().write(pressureCharacteristic.getValueHandle(), (uint8_t *) &pressure, sizeof(PressureType_t));
+    // }
 
      void updateResistance(int newResistanceVal)
     {
@@ -198,7 +201,7 @@ private:
      */
     void updateTemperature(float newTemperatureVal)
     {
-        temperature = (TemperatureType_t) (newTemperatureVal*100);
+        temperature = (TemperatureType_t) (newTemperatureVal*10);
         _ble.gattServer().write(temperatureCharacteristic.getValueHandle(), (uint8_t *) &temperature, sizeof(TemperatureType_t));
     }
 
@@ -213,21 +216,43 @@ private:
     }
 
     void updateValue(void){
-        int ret = sensor.read();
-        printf("Working?:%d", ret);
-        int hum = sensor.getHumidity();
-        printf("Hummildity:%d", hum);
-        printf("Temp:%d", sensor.getCelsius());
-        updateTemperature(sensor.getCelsius());
-        updatePressure(sensor.getHumidity());
+        // int ret = sensor.readData();
+        // printf("Working?:%d", ret);
+        // int hum = sensor.getHumidity();
+        // printf("Hummildity:%d", hum);
+        // printf("Temp:%d", sensor.getCelsius());
+        // updateTemperature(sensor.getCelsius());
+        // updatePressure(sensor.getHumidity());
     }
 
       void updateTest(void){
-        test_Counter += 0.7;
-        updateTemperature(test_Counter);
+        // test_Counter += 0.7;
+        // updateTemperature(test_Counter);
+        int hum;
+        int temp;
         int light = input.read_u16();
-        printf("Light:%d", light);
+    //     while(1) {
+    //     int err = dht.read();
+    //     if (err == DHT::SUCCESS) {
+    //         temp = dht.getTemperature();
+    //         hum = dht.getHumidity();
+    //     } else {
+    //         printf("Error code : %d\r\n", err);
+    //     }
+    // }
+    int err = dht.read();
+    printf("%d", err);
+    temp = dht.getTemperature();
+    hum = dht.getHumidity();
+        // int ret = sensor.readData();
+        // printf("Working?:%d", ret);
+        // int hum = sensor.readHumidity();
+        // int temp = sensor.readTemperature();
+
+        // printf("Light:%d", light);
         updateResistance(light);
+        updateHumidity(hum);
+        updateTemperature(temp);
     }
 
     void lightTest(void){
@@ -273,7 +298,7 @@ private:
 
     ReadOnlyGattCharacteristic<TemperatureType_t> temperatureCharacteristic;
     ReadOnlyGattCharacteristic<HumidityType_t>    humidityCharacteristic;
-    ReadOnlyGattCharacteristic<PressureType_t>    pressureCharacteristic;
+    // ReadOnlyGattCharacteristic<PressureType_t>    pressureCharacteristic;
     ReadOnlyGattCharacteristic<ResistanceType_t> resistanceCharacteristic;
  
     bool _connected;
