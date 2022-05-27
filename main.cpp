@@ -27,13 +27,11 @@
 #include "ble/services/HeartRateService.h"
 #include "ble/services/EnvironmentalService.h"
 #include "pretty_printer.h"
-// #include <Dht11.h>
 #include <DHT.h>
  
 const static char DEVICE_NAME[] = "Measurement Node";
  
 static events::EventQueue event_queue(/* event count */ 16 * EVENTS_EVENT_SIZE);
-// DHT11 sensor(PC_2);
 DHT dht(PC_2, DHT::DHT11);
 AnalogIn input(PC_3);
  
@@ -56,10 +54,8 @@ public:
         _event_queue(event_queue),
         _led1(LED1, 1),
         _connected(false),
-        // _temp_uuid(GattService::UUID_ENVIRONMENTAL_SERVICE),
         temperatureCharacteristic(GattCharacteristic::UUID_TEMPERATURE_CHAR, &temperature),
         humidityCharacteristic(GattCharacteristic::UUID_HUMIDITY_CHAR, &humidity),
-        // pressureCharacteristic(GattCharacteristic::UUID_PRESSURE_CHAR, &pressure),
         resistanceCharacteristic(0x2a6d, &resistance),
         _adv_data_builder(_adv_buffer) { }
 
@@ -72,20 +68,9 @@ public:
 
         printf("Charactristic temp %d", GattCharacteristic::UUID_TEMPERATURE_CHAR);
         test_Counter = 0;
-
-        // updateTemperature(2.8);
         
- 
         _event_queue.call_every(500, this, &MeasurementNode::blink);
-        // _event_queue.call_every(1000, this, &HeartrateDemo::update_sensor_value);
-
-        // _event_queue.call_every(10s, this, &MeasurementNode::updateValue);
-
-        _event_queue.call_every(15min, this, &MeasurementNode::updateTest);
-
-        // _event_queue.call_every(10s, this, &MeasurementNode::lightTest);
-        
-        // updatePressure(1020);
+        _event_queue.call_every(1min, this, &MeasurementNode::updateValues);
  
         _event_queue.dispatch_forever();
     }
@@ -110,16 +95,12 @@ private:
             ble::advertising_type_t::CONNECTABLE_UNDIRECTED,
             ble::adv_interval_t(ble::millisecond_t(1000))
         );
-        // updateTemperature(27.4);
-        // updatePressure(0x3FC);
-
         static bool serviceAdded = false; /* We should only ever need to add the information service once. */
         if (serviceAdded) {
             return;
         }
 
         GattCharacteristic *charTable[] = { &humidityCharacteristic,
-                                            // &pressureCharacteristic,
                                             &temperatureCharacteristic,
                                             &resistanceCharacteristic };
 
@@ -129,8 +110,6 @@ private:
         serviceAdded = true;
  
         _adv_data_builder.setFlags();
-        // _adv_data_builder.setAppearance(ble::adv_data_appearance_t::GENERIC_THERMOMETER);
-        // _adv_data_builder.setLocalServiceList(mbed::make_Span(&_temp_uuid, 1));
         _adv_data_builder.setName(DEVICE_NAME);
  
         /* Setup advertising */
@@ -177,18 +156,12 @@ private:
     }
 
     /**
-     * @brief   Update pressure characteristic.
-     * @param   newPressureVal New pressure measurement.
+     * @brief   Update light intensity characteristic.
+     * @param   newLightVal New sensor voltage for light intensity measurement.
      */
-    // void updatePressure(float newPressureVal)
-    // {
-    //     pressure = (PressureType_t) (newPressureVal);
-    //     _ble.gattServer().write(pressureCharacteristic.getValueHandle(), (uint8_t *) &pressure, sizeof(PressureType_t));
-    // }
-
-     void updateResistance(int newResistanceVal)
+     void updateResistance(int newLightVal)
     {
-        float voltage = newResistanceVal * (5.0/1023) * 1000;
+        float voltage = newLightVal * (5.0/1023) * 1000;
         float resistanceVal = 10000 * ( voltage / ( 5000.0 - voltage) );
         int resistanceInt = static_cast<int>(resistanceVal);
         resistance = (ResistanceType_t) (resistanceInt);
@@ -205,70 +178,23 @@ private:
         _ble.gattServer().write(temperatureCharacteristic.getValueHandle(), (uint8_t *) &temperature, sizeof(TemperatureType_t));
     }
 
-    // void updateLight(float newLightVal)
-    // {
-    //     light= (TemperatureType_t) (newTemperatureVal);
-    //     _ble.gattServer().write(temperatureCharacteristic.getValueHandle(), (uint8_t *) &temperature, sizeof(TemperatureType_t));
-    // }
  
     void blink(void) {
         _led1 = !_led1;
     }
 
-    void updateValue(void){
-        // int ret = sensor.readData();
-        // printf("Working?:%d", ret);
-        // int hum = sensor.getHumidity();
-        // printf("Hummildity:%d", hum);
-        // printf("Temp:%d", sensor.getCelsius());
-        // updateTemperature(sensor.getCelsius());
-        // updatePressure(sensor.getHumidity());
-    }
-
-      void updateTest(void){
-        // test_Counter += 0.7;
-        // updateTemperature(test_Counter);
+      void updateValues(void){
         int hum;
         int temp;
         int light = input.read_u16();
-    //     while(1) {
-    //     int err = dht.read();
-    //     if (err == DHT::SUCCESS) {
-    //         temp = dht.getTemperature();
-    //         hum = dht.getHumidity();
-    //     } else {
-    //         printf("Error code : %d\r\n", err);
-    //     }
-    // }
-    int err = dht.read();
-    printf("%d", err);
-    temp = dht.getTemperature();
-    hum = dht.getHumidity();
-        // int ret = sensor.readData();
-        // printf("Working?:%d", ret);
-        // int hum = sensor.readHumidity();
-        // int temp = sensor.readTemperature();
-
-        // printf("Light:%d", light);
+        int err = dht.read();
+        printf("%d", err);
+        temp = dht.getTemperature();
+        hum = dht.getHumidity();
+    
         updateResistance(light);
         updateHumidity(hum);
         updateTemperature(temp);
-    }
-
-    void lightTest(void){
-
-        #define NUM_SAMPLES 1024
-        uint16_t samples[NUM_SAMPLES];
-
-        for (int i = 0; i < NUM_SAMPLES; i++) {
-            samples[i] = input.read_u16();
-            ThisThread::sleep_for(1);
-        }
-
-        printf("Results:\n");
-        for (int i = 0; i < NUM_SAMPLES; i++) {
-            printf("%d, 0x%04X\n", i, samples[i]);
-        }
     }
 
  
@@ -298,16 +224,9 @@ private:
 
     ReadOnlyGattCharacteristic<TemperatureType_t> temperatureCharacteristic;
     ReadOnlyGattCharacteristic<HumidityType_t>    humidityCharacteristic;
-    // ReadOnlyGattCharacteristic<PressureType_t>    pressureCharacteristic;
     ReadOnlyGattCharacteristic<ResistanceType_t> resistanceCharacteristic;
  
     bool _connected;
- 
-    // UUID _temp_uuid;
- 
-    // uint8_t _temp_data;
-    // HeartRateService _temp_service;
-    // EnvironmentalService _temp_service;
  
     uint8_t _adv_buffer[ble::LEGACY_ADVERTISING_MAX_SIZE];
     ble::AdvertisingDataBuilder _adv_data_builder;
